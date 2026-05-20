@@ -1,0 +1,14 @@
+{
+  "name": "sync_git_contributions",
+  "version": "1.0.0",
+  "description": "Sync GitLab commits to GitHub contribution graph",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "bun index.js"
+  },
+  "dependencies": {
+    "@octokit/rest": "^20.0.0",
+    "dotenv": "^17.4.2"
+  }
+}

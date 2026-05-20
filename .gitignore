@@ -1,0 +1,5 @@
+# Never commit your secrets
+.env
+
+# Dependencies
+node_modules/
