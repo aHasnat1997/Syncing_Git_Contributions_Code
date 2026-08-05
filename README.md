@@ -42,6 +42,7 @@ bun install
 Go to [github.com/new](https://github.com/new) and create a **private** repo (e.g. `gitlab-mirror`).
 
 It must have at least one commit (initialize with a README).
+The repository must be a standalone repo, not a fork, and its default branch is what GitHub uses for contribution counting.
 
 ### 3. Generate Tokens
 
@@ -49,6 +50,8 @@ It must have at least one commit (initialize with a README).
 - Go to: GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)
 - Scopes needed: `repo`
 - Copy the token
+
+Your `GITHUB_EMAIL` must be an email address that is added to and verified on your GitHub account.
 
 **GitLab Token**
 - Go to: `https://your-gitlab.com/-/user_settings/personal_access_tokens`
@@ -80,6 +83,15 @@ FETCH_LIMIT=100
 | `GITLAB_USERNAME`| Your GitLab username                                     |
 | `GITLAB_URL`     | GitLab base URL (default: `https://gitlab.com`)          |
 | `FETCH_LIMIT`    | Max commits to fetch per project per run (default: `100`)|
+
+### Why commits might not appear on the graph
+
+If the script says `Done! Synced ...` but your contribution heatmap still looks empty, check these first:
+
+1. The GitHub mirror repo's default branch matches the branch the script is updating.
+2. The commit email is verified and associated with your GitHub account.
+3. The repo is not a fork.
+4. If the repo is private, enable `Private contributions` in your GitHub profile contribution settings.
 
 ---
 

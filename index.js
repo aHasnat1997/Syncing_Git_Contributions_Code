@@ -26,6 +26,45 @@ if (missing.length > 0) {
 const octokit = new Octokit({ auth: CONFIG.github_token });
 const HEADERS = { "PRIVATE-TOKEN": CONFIG.gitlab_token };
 
+async function getVerifiedGithubEmails() {
+  try {
+    const { data } = await octokit.request("GET /user/emails");
+    return Array.isArray(data) ? data : [];
+  } catch (e) {
+    if (e.status === 403 || e.status === 401 || e.status === 404) {
+      return null;
+    }
+    throw e;
+  }
+}
+
+async function validateGithubEmail() {
+  const emails = await getVerifiedGithubEmails();
+  console.log(`   GitHub commit email: ${CONFIG.github_email}`);
+
+  if (emails === null) {
+    console.log(
+      "   Could not verify GitHub emails with this token. If the graph still does not update, make sure GITHUB_EMAIL is a verified email on your GitHub account or use a token with user:email scope.\n",
+    );
+    return;
+  }
+
+  const match = emails.find((e) => e.email?.toLowerCase() === CONFIG.github_email.toLowerCase());
+  if (!match) {
+    console.warn(
+      "⚠️  The configured GITHUB_EMAIL is not listed among the verified emails on this GitHub account. Commits made with it will not count on the contribution graph.\n",
+    );
+    console.warn("   Add that email to GitHub or change GITHUB_EMAIL to a verified GitHub email.\n");
+    return;
+  }
+
+  if (!match.verified) {
+    console.warn(
+      "⚠️  The configured GITHUB_EMAIL is present on GitHub but is not verified. Unverified emails will not count toward contributions.\n",
+    );
+  }
+}
+
 async function getMyGitLabIdentity() {
   const [userRes, emailsRes] = await Promise.all([
     fetch(`${CONFIG.gitlab_url}/api/v4/user`, { headers: HEADERS }),
@@ -130,12 +169,29 @@ async function getMirroredIds() {
 
 const EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
-async function getHeadState() {
+async function getGithubRepoInfo() {
+  const { data: repo } = await octokit.repos.get({
+    owner: CONFIG.github_owner,
+    repo: CONFIG.github_repo,
+  });
+
+  if (!repo?.default_branch) {
+    throw new Error(`Unable to determine default branch for ${CONFIG.github_owner}/${CONFIG.github_repo}`);
+  }
+
+  return {
+    defaultBranch: repo.default_branch,
+    isPrivate: repo.private,
+    isFork: repo.fork,
+  };
+}
+
+async function getHeadState(defaultBranch) {
   try {
     const { data: refData } = await octokit.git.getRef({
       owner: CONFIG.github_owner,
       repo: CONFIG.github_repo,
-      ref: "heads/main",
+      ref: `heads/${defaultBranch}`,
     });
     const parentSha = refData.object.sha;
     const { data: parentCommit } = await octokit.git.getCommit({
@@ -171,20 +227,25 @@ async function createMirrorCommit(gitlabCommit, headState) {
       email: CONFIG.github_email,
       date: gitlabCommit.date,
     },
+    committer: {
+      name: CONFIG.github_owner,
+      email: CONFIG.github_email,
+      date: gitlabCommit.date,
+    },
   });
 
   if (headState.isNew) {
     await octokit.git.createRef({
       owner: CONFIG.github_owner,
       repo: CONFIG.github_repo,
-      ref: "refs/heads/main",
+      ref: `refs/heads/${headState.branchName}`,
       sha: newCommit.sha,
     });
   } else {
     await octokit.git.updateRef({
       owner: CONFIG.github_owner,
       repo: CONFIG.github_repo,
-      ref: "heads/main",
+      ref: `heads/${headState.branchName}`,
       sha: newCommit.sha,
     });
   }
@@ -196,7 +257,20 @@ async function createMirrorCommit(gitlabCommit, headState) {
 }
 
 async function main() {
+  const repoInfo = await getGithubRepoInfo();
+  if (repoInfo.isFork) {
+    console.warn(
+      `⚠️  ${CONFIG.github_owner}/${CONFIG.github_repo} is a fork. GitHub contribution counts only work for standalone repositories.\n`,
+    );
+  }
+  if (repoInfo.isPrivate) {
+    console.log(
+      "ℹ️  This is a private repo. To display these contributions on your profile graph, enable Private contributions in GitHub profile settings.\n",
+    );
+  }
+
   console.log("🔍 Fetching your GitLab identity...");
+  await validateGithubEmail();
   const { myEmails } = await getMyGitLabIdentity();
 
   console.log("🔍 Fetching your GitLab commits (all branches)...");
@@ -216,7 +290,8 @@ async function main() {
 
   console.log(`⬆️  Syncing ${toSync.length} new commit(s) to GitHub...\n`);
 
-  const headState = await getHeadState();
+  const headState = await getHeadState(repoInfo.defaultBranch);
+  headState.branchName = repoInfo.defaultBranch;
 
   let synced = 0;
   for (const commit of toSync) {

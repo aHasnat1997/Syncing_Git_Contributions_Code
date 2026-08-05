@@ -5,7 +5,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "bun index.js"
+    "start": "node api.js && bun index.js"
   },
   "dependencies": {
     "@octokit/rest": "^20.0.0",
